@@ -1,0 +1,26 @@
+name: Sync All Incubator Assets
+on:
+  workflow_dispatch: # 網頁上手動點擊即可執行
+
+jobs:
+  sync-all:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 使用 GitHub CLI 將 nalgeon/sqlean 的 incubator Release 所有檔案下載到本地資料夾
+      - name: Download All Assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p download_assets
+          gh release download incubator --repo nalgeon/sqlean --dir download_assets
+
+      # 2. 將下載下來的所有檔案，一次全部上傳到你自己倉庫的 incubator Release 中
+      - name: Upload All Assets to My Repo
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: 'incubator'
+          files: 'download_assets/*' # 匹配資料夾下的所有編譯檔案
+          prerelease: true           # 標記為預發布版本（避免網頁首頁漏掉）
+          generate_release_notes: true # 自動生成說明
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
