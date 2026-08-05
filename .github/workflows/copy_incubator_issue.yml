@@ -1,4 +1,4 @@
-name: Sync Target GitHub Issue
+name: Sync Target Issue with Comments
 on:
   workflow_dispatch:
     inputs:
@@ -7,22 +7,48 @@ on:
         required: true
 
 permissions:
-  issues: write # 賦予腳本在你自己專案建立 Issue 的寫入權限
+  issues: write # 必須賦予寫入新 Issue 與自動留言的權限
 
 jobs:
-  copy-issue:
+  copy-issue-and-comments:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch and Create Issue
+      - name: Fetch and Clone Entire Issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. 透過官方 CLI 抓取 nalgeon/sqlean 專案特定 Issue 的標題與內文
-          ISSUE_DATA=$(gh issue view ${{ github.event.inputs.issue_number }} --repo nalgeon/sqlean --json title,body)
+          # 1. 隔空抓取對方專案 Issue 的主體 (標題、內文) 與 所有留言紀錄
+          ISSUE_DATA=$(gh issue view ${{ github.event.inputs.issue_number }} --repo nalgeon/sqlean --json title,body,comments)
           
-          # 解析 JSON 內容
+          # 解析主體資料
           TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
           BODY=$(echo "$ISSUE_DATA" | jq -r '.body')
           
-          # 2. 在你自己的專案裡直接建立一個一模一樣的新 Issue
-          gh issue create --title "$TITLE" --body "$BODY" --repo ${{ github.repository }}
+          # 2. 在你自己的專案裡建立新 Issue，並獲取生成的新編號
+          NEW_ISSUE_URL=$(gh issue create --title "$TITLE" --body "$BODY" --repo ${{ github.repository }})
+          NEW_ISSUE_NUM=$(echo "$NEW_ISSUE_URL" | awk -F '/' '{print $NF}')
+          
+          echo "新 Issue 建立成功，編號為: $NEW_ISSUE_NUM"
+
+          # 3. 提取所有網友的討論紀錄，並透過迴圈一筆一筆幫你自動留言備份
+          echo "$ISSUE_DATA" | jq -c '.comments[]' | while read -r comment; do
+            AUTHOR=$(echo "$comment" | jq -r '.author.login')
+            COMMENT_BODY=$(echo "$comment" | jq -r '.body')
+            CREATED_AT=$(echo "$comment" | jq -r '.createdAt')
+            
+            # 建立格式化的引言樣式，標記原創作者與時間
+            FORMATTED_COMMENT=$(cat <<EOF
+          > 💡 **備份自原討論區**
+          > **發言者**: @$AUTHOR
+          > **時間**: $CREATED_AT
+          
+          $COMMENT_BODY
+          EOF
+          )
+            
+            # 自動在你的新 Issue 底下留言
+            gh issue comment $NEW_ISSUE_NUM --body "$FORMATTED_COMMENT" --repo ${{ github.repository }}
+            
+            # 微調間隔時間避免被 GitHub 判定為觸發頻率限制
+            sleep 1
+          done
