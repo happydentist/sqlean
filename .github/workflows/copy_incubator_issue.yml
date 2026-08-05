@@ -1,0 +1,28 @@
+name: Sync Target GitHub Issue
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: '請輸入對方專案的 Issue 編號 (例如: 45)'
+        required: true
+
+permissions:
+  issues: write # 賦予腳本在你自己專案建立 Issue 的寫入權限
+
+jobs:
+  copy-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and Create Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. 透過官方 CLI 抓取 nalgeon/sqlean 專案特定 Issue 的標題與內文
+          ISSUE_DATA=$(gh issue view ${{ github.event.inputs.issue_number }} --repo nalgeon/sqlean --json title,body)
+          
+          # 解析 JSON 內容
+          TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
+          BODY=$(echo "$ISSUE_DATA" | jq -r '.body')
+          
+          # 2. 在你自己的專案裡直接建立一個一模一樣的新 Issue
+          gh issue create --title "$TITLE" --body "$BODY" --repo ${{ github.repository }}
